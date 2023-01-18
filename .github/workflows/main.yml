@@ -1,0 +1,232 @@
+name: Build, Test, and Deploy
+on:
+  push:
+    branches:
+      - "*"
+env:
+  PUBLICLY_AVAILABLE_ORIGIN: http://localhost:3000
+  SESSION_SECRET: secret
+  CONTENTFUL_ENV_ID: "master"
+  CONTENTFUL_SPACE_ID: "${{ secrets.CONTENTFUL_SPACE_ID }}"
+  CONTENTFUL_PREVIEW_ACCESS_TOKEN: "${{ secrets.CONTENTFUL_PREVIEW_ACCESS_TOKEN }}"
+  CONTENTFUL_MANAGEMENT_ACCESS_TOKEN: "${{ secrets.CONTENTFUL_MANAGEMENT_ACCESS_TOKEN }}"
+
+jobs:
+  lint:
+    name: ⬣ ESLint
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🛑 Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.11.0
+
+      - name: ⬇️ Checkout repository
+        uses: actions/checkout@v3
+
+      - name: ⎔ Setup node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+          cache: "npm"
+
+      - name: 📥 Download dependencies
+        run: |
+          npm install
+
+      - name: 🔬 Lint
+        run: npm run lint
+
+  typecheck:
+    name: ʦ TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🛑 Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.11.0
+
+      - name: ⬇️ Checkout repository
+        uses: actions/checkout@v3
+
+      - name: ⎔ Setup node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+          cache: "npm"
+
+      - name: 📥 Download dependencies
+        run: |
+          npm install
+
+      - name: 🔎 Run a type check
+        run: npm run typecheck --if-present
+
+  unit-tests:
+    name: ⚡ Vitest
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🛑 Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.11.0
+
+      - name: ⬇️ Checkout repository
+        uses: actions/checkout@v3
+
+      - name: ⎔ Setup node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+          cache: "npm"
+
+      - name: 📥 Download dependencies
+        run: |
+          npm install
+
+      - name: ⚡ Run vitest
+        run: npm run test -- --coverage
+
+  browser-tests:
+    name: 🎭 Browser Tests
+    runs-on: ubuntu-latest
+    env:
+      DEBUG: pw:webserver
+    steps:
+      - name: 🛑 Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.11.0
+
+      - name: ⬇️ Checkout repository
+        uses: actions/checkout@v3
+
+      - name: ⎔ Setup node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+          cache: "npm"
+
+      - name: 📥 Download dependencies
+        run: |
+          npm install
+      - name: 🕵 Inspect Environment
+        id: inspect-env
+        run: |
+          # get the potential environment name, either as the entire branch name, or as "<env_name>/other-part-of-branch-name"
+          POTENTIAL_ENV_NAME=$(echo ${{ github.head_ref }} | sed 's|/.*||g')
+          if curl \
+              --header "Authorization: Bearer $CONTENTFUL_MANAGEMENT_ACCESS_TOKEN" \
+              https://api.contentful.com/spaces/$CONTENTFUL_SPACE_ID/environments \
+              | jq -r  '.items | .[] | .sys.id' | grep -x $POTENTIAL_ENV_NAME; then
+            # if Contentful has an environment that exactly matches our potential environment name, then use that
+            CONTENTFUL_ENV_ID=$POTENTIAL_ENV_NAME
+          else
+            # otherwise, just use the master environment (presumably this branch isn't using Contentful migrations)
+            CONTENTFUL_ENV_ID=master
+          fi
+          echo "Selected Contentful environment: $CONTENTFUL_ENV_ID (POTENTIAL_ENV_NAME=$POTENTIAL_ENV_NAME)"
+          echo "{contentful-env}={$CONTENTFUL_ENV_ID}" >> $GITHUB_OUTPUT
+      - name: 🐳 Docker compose
+        # the sleep is just there to give time for postgres to get started
+        run: docker-compose up -d && sleep 3
+
+      - name: 🎭 Run Playwright tests
+        env:
+          CONTENTFUL_ENV_ID: ${{ steps.inspect-env.outputs.contentful-env }}
+        run: |
+          npx playwright install --with-deps
+          npm run test:e2e
+
+  storybook:
+    name: 📖 Test & deploy Storybook
+    needs: [typecheck, unit-tests]
+    runs-on: ubuntu-latest
+    # Change this to your desired branch name if necessary
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: 🛑 Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.11.0
+
+      - name: ⤵️ Checkout repository
+        uses: actions/checkout@v3
+
+      - name: 📥 Download dependencies
+        run: |
+          npm install
+
+      - name: 📦 Install utilities
+        run: |
+          npm i -g concurrently wait-on http-server
+
+      - name: 📖 Build and run Storybook tests
+        run: |
+          concurrently -k -s first -n "SB,TEST" -c "magenta,blue" "npm run --prefix my-remix-app build --quiet && npm run --prefix my-remix-app start" "wait-on tcp:3000 && npm run --prefix my-remix-app storybook:test"
+
+      - name: 🦔 Upload to Percy if enabled
+        env:
+          PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
+        if: env.PERCY_TOKEN != null
+        run: |
+          npx @percy/cli snapshot storybook-static
+
+      - name: 🛳 Deploy to Github Pages
+        uses: JamesIves/github-pages-deploy-action@3.6.2
+        with:
+          branch: gh-pages
+          folder: storybook-static
+
+  lighthouse:
+    name: 💡 Run Lighthouse tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 16
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+      - name: 🕵 Inspect Environment
+        id: inspect-env
+        run: |
+          # get the potential environment name, either as the entire branch name, or as "<env_name>/other-part-of-branch-name"
+          POTENTIAL_ENV_NAME=$(echo ${{ github.head_ref }} | sed 's|/.*||g')
+          if curl \
+              --header "Authorization: Bearer $CONTENTFUL_MANAGEMENT_ACCESS_TOKEN" \
+              https://api.contentful.com/spaces/$CONTENTFUL_SPACE_ID/environments \
+              | jq -r  '.items | .[] | .sys.id' | grep -x $POTENTIAL_ENV_NAME; then
+            # if Contentful has an environment that exactly matches our potential environment name, then use that
+            CONTENTFUL_ENV_ID=$POTENTIAL_ENV_NAME
+          else
+            # otherwise, just use the master environment (presumably this branch isn't using Contentful migrations)
+            CONTENTFUL_ENV_ID=master
+          fi
+          echo "Selected Contentful environment: $CONTENTFUL_ENV_ID (POTENTIAL_ENV_NAME=$POTENTIAL_ENV_NAME)"
+          echo "{contentful-env}={$CONTENTFUL_ENV_ID}" >> $GITHUB_OUTPUT
+
+      - name: 📦 Install dependencies and run build
+        working-directory: .
+        run: |
+          npm install
+          npm run build
+
+      - name: 💡 Setup lighthouse tests
+        working-directory: .
+        env:
+          CONTENTFUL_ENV_ID: ${{ steps.inspect-env.outputs.contentful-env }}
+        run: |
+          PORT=5005 npm run start:server & npx wait-on --timeout 5000 http://localhost:5005
+
+      - name: 🔦 Run Lighthouse on urls
+        uses: treosh/lighthouse-ci-action@v9
+        with:
+          urls: |
+            http://localhost:5005
+          configPath: ".lighthouserc.js"
+          uploadArtifacts: true
+      - name: 🔦 Run Lighthouse on Contentful urls
+        uses: treosh/lighthouse-ci-action@v9
+        with:
+          urls: |
+            http://localhost:5005/contentful
+            http://localhost:5005/contentful/blog
+            http://localhost:5005/contentful/about-us
+          configPath: ".lighthouserc.js"
+          uploadArtifacts: true
+  deploy_to_fly:
+    name: 🚀 Deploy to Fly.io
+    needs: [lint, typecheck, browser-tests, unit-tests, lighthouse]
+    secrets: inherit
+    uses: ./.github/workflows/deploy_to_fly.yml

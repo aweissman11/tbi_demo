@@ -1,0 +1,12 @@
+node_modules
+CODEOWNERS
+
+/build
+/public/build
+.env
+
+/postgres-data
+
+tailwind.css
+/contentful/migrations
+

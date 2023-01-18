@@ -1,0 +1,31 @@
+# Configuration variables that are secret or are different on each environment are stored here
+# all other configuration variables are stored in app/config.ts
+
+export SENTRY_DSN=
+export GA_TRACKING_ID=
+export PERCY_TOKEN=
+
+export BASIC_AUTH_ENTIRE_SITE=false
+export BASIC_AUTH_STORYBOOK=false
+export BASIC_AUTH_USERS="user1,password1|user2,password2"
+
+export SESSION_SECRET="6d89f95ce0f988083a7bfcb0224128bb"
+# Do not include a trailing slash
+export PUBLICLY_AVAILABLE_ORIGIN="http://localhost:3000"
+export CONTENTFUL_SPACE_ID=jcdjo56lmw8q
+export CONTENTFUL_PREVIEW_ACCESS_TOKEN=6Sovo60Z0rGOYvNmnr_pKBp5pXCKkJqRkUHODg4YXyA
+export CONTENTFUL_MANAGEMENT_ACCESS_TOKEN=
+export CONTENTFUL_ENV_ID=master
+export PRODUCTION_DOMAIN_NAME=
+export PRODUCTION_CDK_CERTIFICATE_VALIDATION=
+export PRODUCTION_ROUTE53_HOSTED_ZONE_DOMAIN=
+export PRODUCTION_CLOUDFRONT_CERTIFICATE_ARN=
+export PRODUCTION_LOAD_BALANCER_CERTIFICATE_ARN=
+export STRAPI_AWS_ACCESS_KEY_ID=
+export STRAPI_AWS_SECRET_ACCESS_KEY=
+export STRAPI_AWS_REGION=
+export STRAPI_AWS_BUCKET_NAME=
+export STRAPI_APP_KEYS=key1,key2
+export STRAPI_API_TOKEN_SALT=tokensalt
+export STRAPI_ADMIN_JWT_SECRET=adminjwtsecret
+export STRAPI_JWT_SECRET=jwtsecret
