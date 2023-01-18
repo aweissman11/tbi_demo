@@ -130,44 +130,6 @@ jobs:
           npx playwright install --with-deps
           npm run test:e2e
 
-  storybook:
-    name: 📖 Test & deploy Storybook
-    needs: [typecheck, unit-tests]
-    runs-on: ubuntu-latest
-    # Change this to your desired branch name if necessary
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: 🛑 Cancel previous runs
-        uses: styfle/cancel-workflow-action@0.11.0
-
-      - name: ⤵️ Checkout repository
-        uses: actions/checkout@v3
-
-      - name: 📥 Download dependencies
-        run: |
-          npm install
-
-      - name: 📦 Install utilities
-        run: |
-          npm i -g concurrently wait-on http-server
-
-      - name: 📖 Build and run Storybook tests
-        run: |
-          concurrently -k -s first -n "SB,TEST" -c "magenta,blue" "npm run --prefix my-remix-app build --quiet && npm run --prefix my-remix-app start" "wait-on tcp:3000 && npm run --prefix my-remix-app storybook:test"
-
-      - name: 🦔 Upload to Percy if enabled
-        env:
-          PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
-        if: env.PERCY_TOKEN != null
-        run: |
-          npx @percy/cli snapshot storybook-static
-
-      - name: 🛳 Deploy to Github Pages
-        uses: JamesIves/github-pages-deploy-action@3.6.2
-        with:
-          branch: gh-pages
-          folder: storybook-static
-
   lighthouse:
     name: 💡 Run Lighthouse tests
     runs-on: ubuntu-latest
